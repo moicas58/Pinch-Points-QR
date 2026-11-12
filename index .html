@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pinch Points QR</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1b1f24;--mu:#5b6570;--ac:#0b5fff;--ok:#12805c;--er:#b42318;--bd:#d9dde3;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171a;--card:#1e2328;--tx:#eceff2;--mu:#9aa4af;--ac:#6ea0ff;--ok:#4cc79a;--er:#ff8a7d;--bd:#323941}}
+:root[data-theme="dark"]{--bg:#14171a;--card:#1e2328;--tx:#eceff2;--mu:#9aa4af;--ac:#6ea0ff;--ok:#4cc79a;--er:#ff8a7d;--bd:#323941}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px;max-width:520px;margin-inline:auto}
+h1{font-size:1.3rem;margin:0 0 12px}.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+button{display:block;width:100%;padding:13px;border:0;border-radius:10px;background:var(--ac);color:#fff;font-size:1rem;font-weight:600;margin-top:8px;cursor:pointer}
+.sec{background:transparent;color:var(--ac);border:1px solid var(--ac)}
+input[type=text]{width:100%;padding:12px;border:1px solid var(--bd);border-radius:10px;font-size:1rem;background:var(--bg);color:var(--tx)}
+input[type=file]{width:100%;min-height:48px;margin-top:6px;padding:10px;border:2px dashed var(--ac);border-radius:10px;color:var(--tx);font-size:1rem}
+.mu{color:var(--mu);font-size:.9rem}#reader{width:100%;margin-top:8px}
+.res b{display:block;font-size:.8rem;color:var(--mu);margin-top:10px;font-weight:600}.res span{font-size:1.1rem;word-break:break-word}
+.ok{color:var(--ok)}.er{color:var(--er)}
+</style></head><body>
+<h1>Pinch Points QR</h1>
+<div class="card">
+<div id="estado" class="mu">Aún no hay lista cargada.</div>
+<button class="sec" id="btnDesc" style="display:none">Descargar datos.csv para compartir</button>
+<div class="mu" style="margin-top:10px">Cargar levantamiento (Excel o CSV):</div>
+<input id="archivo" type="file">
+</div>
+<div class="card">
+<button id="btnCam">Escanear con la cámara</button>
+<div id="reader"></div>
+<div style="margin-top:12px"><input id="manual" type="text" placeholder="O escribe el RED TAG, ej. D063269"><button class="sec" id="btnBuscar">Buscar</button></div>
+</div>
+<div id="out"></div>
+<script>
+var rows=[],sc=null;
+function $(i){return document.getElementById(i)}
+function esc(s){return String(s==null?"":s).replace(/[&<>]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;"}[c]})}
+function norm(s){return String(s==null?"":s).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")}
+try{var g=localStorage.getItem("pp");if(g)rows=JSON.parse(g)}catch(e){}
+function estado(){$("btnDesc").style.display=rows.length?"block":"none";$("estado").innerHTML=rows.length?'<b class="ok">Lista cargada: '+rows.length+' registros.</b>':"Aún no hay lista cargada."}
+function guardar(){try{localStorage.setItem("pp",JSON.stringify(rows))}catch(e){}estado()}
+estado();
+function parseCSV(t){var o=[],r=[],c="",q=0,i,ch;for(i=0;i<t.length;i++){ch=t[i];if(q){if(ch=='"'){if(t[i+1]=='"'){c+='"';i++}else q=0}else c+=ch}else if(ch=='"')q=1;else if(ch==','||ch==';'||ch=='\t'){r.push(c);c=""}else if(ch=='\n'){r.push(c);o.push(r);r=[];c=""}else if(ch!='\r')c+=ch}r.push(c);o.push(r);return o}
+function desdeTabla(d){var h=-1,i,j;
+for(i=0;i<d.length&&h<0;i++){for(j=0;j<d[i].length;j++){if(norm(d[i][j])==="red tag"){h=i;break}}}
+if(h<0)throw new Error("no encontré la columna RED TAG");
+var enc=[];for(j=0;j<d[h].length;j++)enc.push(norm(d[h][j]));
+var ix=["red tag","id","area","conveyor"].map(function(n){return enc.indexOf(n)});
+return d.slice(h+1).filter(function(x){return x[ix[0]]&&String(x[ix[0]]).trim()}).map(function(x){return ix.map(function(k){return k<0||x[k]==null?"":String(x[k]).trim()})})}
+$("archivo").onchange=function(e){
+var f=e.target.files[0];if(!f){$("estado").textContent="No se seleccionó archivo.";return}
+$("estado").textContent="Leyendo: "+f.name+" ...";
+var csv=/\.(csv|txt)$/i.test(f.name),r=new FileReader();
+r.onerror=function(){$("estado").innerHTML='<b class="er">El celular no dejó leer el archivo. Descárgalo al celular primero.</b>'};
+r.onload=function(){try{var d;
+if(csv){d=parseCSV(String(r.result).replace(/^\uFEFF/,""))}
+else{if(typeof XLSX==="undefined")throw new Error("falta la librería de Excel");var wb=XLSX.read(r.result,{type:"array"});var n=wb.SheetNames.indexOf("Levantamiento");d=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[n<0?0:n]],{header:1,raw:false})}
+rows=desdeTabla(d);guardar()}catch(er){$("estado").innerHTML='<b class="er">No pude leer el archivo: '+esc(er.message)+'</b>'}};
+if(csv)r.readAsText(f);else r.readAsArrayBuffer(f)};
+fetch("datos.csv?v="+Date.now()).then(function(r){if(!r.ok)throw 0;return r.text()}).then(function(tx){
+var n=desdeTabla(parseCSV(tx.replace(/^\uFEFF/,"")));if(n.length){rows=n;estado()}}).catch(function(){});
+$("btnDesc").onclick=function(){var tx="RED TAG,ID,Area,Conveyor\n"+rows.map(function(x){return x.map(function(v){return'"'+String(v).replace(/"/g,'""')+'"'}).join(",")}).join("\n");
+var a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\uFEFF"+tx],{type:"text/csv;charset=utf-8"}));a.download="datos.csv";document.body.appendChild(a);a.click();a.remove()};
+function buscar(txt){
+var t=String(txt).trim().toUpperCase(),o=$("out");
+if(!rows.length){o.innerHTML='<div class="card er">Primero carga tu lista.</div>';return}
+var m=rows.filter(function(x){return x[0].toUpperCase()===t||x[1].toUpperCase()===t});
+if(!m.length)m=rows.filter(function(x){return x[0].length>=3&&t.indexOf(x[0].toUpperCase())>-1});
+if(!m.length){o.innerHTML='<div class="card"><b class="er">Sin resultados</b><div class="mu">Texto leído: '+esc(txt)+'</div></div>';return}
+o.innerHTML=m.map(function(x){return'<div class="card res"><b>RED TAG</b><span>'+esc(x[0])+'</span><b>ID</b><span>'+esc(x[1])+'</span><b>Área</b><span>'+esc(x[2])+'</span><b>Conveyor</b><span>'+esc(x[3])+'</span></div>'}).join("")}
+$("btnBuscar").onclick=function(){var v=$("manual").value;if(v)buscar(v)};
+$("btnCam").onclick=function(){
+if(sc){sc.stop().catch(function(){});sc=null;$("reader").innerHTML="";return}
+sc=new Html5Qrcode("reader");
+sc.start({facingMode:"environment"},{fps:10,qrbox:240},function(t){buscar(t);sc.stop().then(function(){sc=null;$("reader").innerHTML=""}).catch(function(){})},function(){})
+.catch(function(){sc=null;$("out").innerHTML='<div class="card er">No pude abrir la cámara. Revisa el permiso del navegador o escribe el RED TAG.</div>'})};
+</script></body></html>
